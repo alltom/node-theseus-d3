@@ -1,0 +1,155 @@
+<p id="status">Disconnected...</p>
+
+<h2>Functions</h2>
+<ul id="functions"></ul>
+
+<h2>Function Calls</h2>
+<ol id="function-calls"></ol>
+
+<script src="d3.min.js"></script>
+<script src="jquery.min.js"></script>
+<script>
+function Connection() {
+    this.socket = new WebSocket('ws://localhost:8888/');
+    this.socket.onerror = this._onerror.bind(this);
+    this.socket.onopen = this._onopen.bind(this);
+    this.socket.onmessage = this._onmessage.bind(this);
+    this.socket.onclose = this._onclose.bind(this);
+    this.connected = new $.Deferred();
+    this.disconnected = new $.Deferred();
+    this._nextRequestIndex = 0;
+    this._requests = {};
+}
+Connection.prototype = {
+    _onerror: function () {
+        this.connected.reject();
+        this.disconnected.resolve();
+        this._rejectAllPending();
+    },
+    _onopen: function () {
+        this.connected.resolve();
+    },
+    _onmessage: function (msg) {
+        var resp;
+        try {
+            resp = JSON.parse(msg.data);
+        } catch (e) {
+            return;
+        }
+
+        if (resp.id in this._requests) {
+            if ('data' in resp) {
+                this._requests[resp.id].resolve(resp.data);
+            } else {
+                this._requests[resp.id].reject();
+            }
+            delete this._requests[resp.id];
+        }
+    },
+    _onclose: function () {
+        this.connected.reject();
+        this.disconnected.resolve();
+        this._rejectAllPending();
+    },
+    _rejectAllPending: function () {
+        for (var i in this._requests) {
+            this._requests[i].reject();
+        }
+        this._requests = {};
+    },
+    request: function (name, args) {
+        return this.connected.pipe(function () {
+            var deferred = new $.Deferred();
+            var idx = this._nextRequestIndex++;
+            this.socket.send(JSON.stringify({
+                name: name,
+                arguments: args || [],
+                id: idx
+            }));
+            this._requests[idx] = deferred;
+            return deferred.promise();
+        }.bind(this));
+    },
+    invoke: function (name, args, callback) {
+        this.request(name, args).done(function (value) {
+            callback && callback(null, value);
+        }).fail(function (err) {
+            callback && callback(err);
+        });
+    },
+};
+
+var conn = new Connection();
+
+d3.select('p#status').text('Connecting...');
+conn.connected.done(function () { d3.select('p#status').text('Connected!') });
+conn.disconnected.done(function () { d3.select('p#status').text('Disconnected') });
+
+conn.connected.done(function () {
+    var nodeHandle, logHandle;
+    var functions = [], logs = [];
+    var nodesById = {};
+    var query = { ids: [] };
+    var functionList = d3.select('body ul#functions');
+    var functionCallList = d3.select('body ol#function-calls');
+
+    function getId(node) { return node.id }
+    function getInvocationId(node) { return node.invocationId }
+
+    function renderFunctions() {
+        var li = functionList.selectAll('li')
+            .data(functions, getId);
+        li.enter().append('li')
+            .text(function (d) { return d.name });
+        li.exit().remove();
+    }
+
+    function renderLog() {
+        var li = functionCallList.selectAll('li')
+            .data(logs, getInvocationId);
+        li.enter().append('li')
+            .text(function (d) { return nodesById[d.nodeId].name });
+        li.exit().remove();
+    }
+
+    function queryChanged() {
+        logHandle = null;
+        logs = [];
+        conn.invoke('trackLogs', [query], function (err, handle) { logHandle = handle });
+    }
+
+    conn.invoke('version', [], function (err, version) {
+        console.log(err, version);
+    });
+
+    conn.invoke('trackNodes', [], function (err, handle) { nodeHandle = handle });
+
+    setInterval(function refreshData() {
+        if (nodeHandle != null) getNewNodes(nodeHandle);
+        if (logHandle != null) getNewLogs(logHandle);
+
+        function getNewNodes(handle) {
+            conn.invoke('newNodes', [handle], function (err, newNodes) {
+                newNodes.forEach(function (node) { nodesById[node.id] = node });
+                var newFunctions = newNodes.filter(function (node) {
+                    return node.type === 'function' && /\.js$/.test(node.path);
+                });
+                functions.push.apply(functions, newFunctions);
+                renderFunctions();
+
+                if (newFunctions.length > 0) {
+                    query.ids = functions.map(function (node) { return node.id });
+                    queryChanged();
+                }
+            });
+        }
+
+        function getNewLogs(handle) {
+            conn.invoke('logDelta', [handle], function (err, newLogs) {
+                logs.push.apply(logs, newLogs);
+                renderLog();
+            });
+        }
+    }, 300);
+});
+</script>
