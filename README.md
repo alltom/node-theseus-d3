@@ -2,6 +2,6 @@ An example of how to visualize Node.js execution using [fondue](https://github.c
 
 1. `npm install -g node-theseus`
 2. `node-theseus yourapp.js`
-3. Open [index.html](http://alltom.github.io/node-theseus-d3/)
+3. Open [index.html](http://alltom.github.io/node-theseus-d3/) (or [watch this 90-second demo video](https://www.youtube.com/watch?v=hcIlBPP8V7A))
 4. See debugging data and go 'wow...'
 5. Fork this project and make your own debugger or visualization! [Documentation here](http://adobe-research.github.io/fondue/).
