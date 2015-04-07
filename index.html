@@ -1,4 +1,4 @@
-<p id="status">Disconnected...</p>
+<p id="status">Disconnected.</p>
 
 <p><a href="https://github.com/alltom/node-theseus-d3">Source code is on GitHub</a></p>
 
@@ -83,9 +83,9 @@ Connection.prototype = {
 
 var conn = new Connection();
 
-d3.select('p#status').text('Connecting...');
+d3.select('p#status').text('Attempting to connect to a Node.js app launched with <a href="https://github.com/adobe-research/node-theseus">node-theseus</a>...');
 conn.connected.done(function () { d3.select('p#status').text('Connected!') });
-conn.disconnected.done(function () { d3.select('p#status').text('Disconnected') });
+conn.disconnected.done(function () { d3.select('p#status').html('Disconnected. Launch your app with <a href="https://github.com/adobe-research/node-theseus">node-theseus</a> and reload the page.') });
 
 conn.connected.done(function () {
     var nodeHandle, logHandle;
